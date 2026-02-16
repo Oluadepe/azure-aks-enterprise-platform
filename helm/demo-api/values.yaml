@@ -1,0 +1,28 @@
+replicaCount: 2
+
+image:
+  repository: ""   # set by pipeline: <acrLoginServer>/demo-api
+  tag: ""          # set by pipeline: BuildId
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+ingress:
+  enabled: false
+  className: nginx
+  hostname: demo.example.com
+  tls:
+    enabled: false
+    secretName: demo-api-tls
+    clusterIssuer: letsencrypt-staging

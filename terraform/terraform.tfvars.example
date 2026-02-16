@@ -1,0 +1,6 @@
+subscription_id = "REPLACE_ME"
+tenant_id       = "REPLACE_ME"
+location            = "eastus"
+resource_group_name = "aks-enterprise-rg"
+aks_cluster_name    = "aks-enterprise"
+acr_name            = "acrdemoenterprise12345"

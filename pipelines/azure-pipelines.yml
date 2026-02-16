@@ -1,0 +1,94 @@
+trigger:
+- main
+
+parameters:
+- name: environment
+  displayName: Target Environment
+  type: string
+  default: dev
+  values:
+    - dev
+    - staging
+    - prod
+
+variables:
+  IMAGE_REPO: 'demo-api'
+  HELM_RELEASE: 'demo-api'
+  HELM_CHART_PATH: 'helm/demo-api'
+  # Set these in pipeline variables or variable group:
+  # AZURE_SUBSCRIPTION: Azure RM service connection name
+  # ACR_NAME: your ACR name (no .azurecr.io)
+  # AKS_RG: resource group name
+  # AKS_NAME: AKS cluster name
+  # K8S_NAMESPACE: demo
+  # ACR_SERVICE_CONNECTION: Docker registry service connection name for ACR
+
+stages:
+- stage: CI
+  displayName: Build, Scan, and Push
+  jobs:
+  - job: build_push
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: Docker@2
+      displayName: Build and push image to ACR
+      inputs:
+        command: buildAndPush
+        repository: '$(IMAGE_REPO)'
+        dockerfile: 'Dockerfile'
+        containerRegistry: '$(ACR_SERVICE_CONNECTION)'
+        tags: |
+          $(Build.BuildId)
+
+    # Optional: Trivy scan (requires trivy install). Uncomment if you want scanning in Azure DevOps.
+    # - script: |
+    #     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+    #     ACR_LOGIN_SERVER=$(az acr show -n $(ACR_NAME) --query loginServer -o tsv)
+    #     trivy image "$ACR_LOGIN_SERVER/$(IMAGE_REPO):$(Build.BuildId)" --severity HIGH,CRITICAL
+    #   displayName: Trivy scan (optional)
+
+- stage: CD
+  displayName: Deploy to AKS (Helm)
+  dependsOn: CI
+  jobs:
+  - deployment: deploy_aks
+    displayName: Helm deploy to AKS
+    # IMPORTANT: Azure DevOps Environments can be configured with approvals per env.
+    # Create environments named: dev, staging, prod and set Approvals & Checks for staging/prod.
+    environment: ${{ parameters.environment }}
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: Login and get AKS credentials
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az account show
+                az aks get-credentials -g $(AKS_RG) -n $(AKS_NAME) --overwrite-existing
+                kubectl get nodes
+
+          - task: HelmInstaller@1
+            displayName: Install Helm
+            inputs:
+              helmVersionToInstall: 'latest'
+
+          - script: |
+              kubectl create namespace $(K8S_NAMESPACE) || true
+              ACR_LOGIN_SERVER=$(az acr show -n $(ACR_NAME) --query loginServer -o tsv)
+
+              helm upgrade --install $(HELM_RELEASE) $(HELM_CHART_PATH)                 -n $(K8S_NAMESPACE)                 --set image.repository="$ACR_LOGIN_SERVER/$(IMAGE_REPO)"                 --set image.tag="$(Build.BuildId)"
+
+              kubectl -n $(K8S_NAMESPACE) rollout status deploy/demo-api --timeout=180s
+              kubectl -n $(K8S_NAMESPACE) get deploy,svc,ingress
+            displayName: Helm upgrade/install
