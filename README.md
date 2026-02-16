@@ -1,46 +1,134 @@
-# Azure AKS Enterprise Platform (Terraform + Azure DevOps + ACR + Helm)
+# Azure AKS Enterprise Platform  
+**Terraform · Azure DevOps · AKS · ACR · Helm · Key Vault · Azure Monitor**
 
-**Version:** v1.1.0 (Generated 2026-02-14)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-623CE4?logo=terraform)
+![Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure)
+![Kubernetes](https://img.shields.io/badge/Platform-AKS-326CE5?logo=kubernetes)
+![Helm](https://img.shields.io/badge/Deployment-Helm-0F1689?logo=helm)
+![CI/CD](https://img.shields.io/badge/CI/CD-Azure%20DevOps-0078D7?logo=azuredevops)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-This project demonstrates a production-style Azure DevOps workflow to provision and deploy an application on **AKS**:
-
-- **Terraform** provisions: Resource Group, VNet/Subnet, **AKS**, **ACR**, Log Analytics
-- **Azure DevOps Pipelines** builds a container image and pushes to **ACR**
-- **Helm** deploys the application to **AKS** in a CD stage
+**Version:** v1.1.0  
+**Last Updated:** 2026-02-14  
 
 ---
 
-## Architecture
+# Platform Overview
+
+This repository implements an **enterprise-grade Kubernetes platform on Microsoft Azure**, designed using Infrastructure as Code (Terraform) and automated CI/CD pipelines (Azure DevOps and GitHub Actions).
+
+It demonstrates real-world DevOps and Platform Engineering practices for provisioning, deploying, and operating containerized applications securely and reliably on Azure Kubernetes Service (AKS).
+
+This platform provides:
+
+- Automated AKS cluster provisioning using Terraform  
+- Secure container build and storage in Azure Container Registry (ACR)  
+- Fully automated CI/CD pipelines using Azure DevOps and GitHub Actions  
+- Kubernetes application deployment using Helm  
+- HTTPS enablement using cert-manager and Azure Key Vault  
+- Observability using Azure Monitor and Log Analytics  
+- Multi-environment deployment support (dev / staging / prod)
+
+This project reflects production-style cloud platform architecture used in enterprise environments.
+
+---
+
+# Architecture
+
 ![Architecture](docs/architecture.png)
 
-### Flow
-1. Commit → Azure Repos / GitHub
-2. Pipeline CI builds Docker image and pushes to ACR (tag = BuildId)
-3. Pipeline CD authenticates to Azure, gets AKS credentials, and runs `helm upgrade --install`
-4. App runs on AKS behind a Kubernetes Service (optional Ingress)
-
 ---
 
-## Repo Structure
+# Deployment Workflow
+
 ```text
-azure-aks-enterprise-platform/
-├── app/                      # sample app (FastAPI)
-├── Dockerfile
-├── helm/demo-api/            # Helm chart
-├── terraform/                # Azure IaC (AKS + ACR)
-├── pipelines/azure-pipelines.yml
-└── docs/architecture.png
+Developer Commit
+      │
+      ▼
+CI Pipeline (Azure DevOps / GitHub Actions)
+      │
+      ├── Build Docker Image
+      ├── Push Image to Azure Container Registry (ACR)
+      │
+      ▼
+CD Pipeline
+      │
+      ├── Authenticate to Azure
+      ├── Connect to AKS cluster
+      ├── Deploy application using Helm
+      │
+      ▼
+Azure Kubernetes Service (AKS)
+      │
+      ├── Kubernetes Deployment
+      ├── Kubernetes Service
+      ├── Optional Ingress with TLS
+      │
+      ▼
+Application accessible to users
 ```
 
 ---
 
-## Prerequisites
-- Terraform >= 1.6
-- Azure CLI
-- kubectl + Helm
-- Azure subscription + Azure DevOps project
+# Repository Structure
 
-Login:
+```text
+azure-aks-enterprise-platform/
+│
+├── app/                          # Sample FastAPI application
+│   ├── main.py
+│   └── requirements.txt
+│
+├── terraform/                   # Infrastructure as Code (AKS, ACR, Networking)
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── versions.tf
+│   ├── backend.tf.example
+│   └── terraform.tfvars.example
+│
+├── helm/demo-api/               # Helm chart for application deployment
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│
+├── k8s/                         # Kubernetes platform components
+│   ├── cert-manager/
+│   └── keyvault/
+│
+├── pipelines/
+│   └── azure-pipelines.yml     # Azure DevOps CI/CD pipeline
+│
+├── .github/workflows/
+│   └── deploy.yml              # GitHub Actions CI/CD pipeline
+│
+├── docs/
+│   ├── architecture.png
+│   ├── ingress-tls-keyvault.md
+│   └── monitoring-azure-monitor.md
+│
+├── Dockerfile
+├── VERSION
+├── LICENSE
+└── README.md
+```
+
+---
+
+# Infrastructure Provisioning (Terraform)
+
+## Prerequisites
+
+Install required tools:
+
+- Terraform >= 1.6  
+- Azure CLI  
+- kubectl  
+- Helm  
+- Docker  
+
+Login to Azure:
+
 ```bash
 az login
 az account show
@@ -48,128 +136,198 @@ az account show
 
 ---
 
-## Step 1 — Provision AKS + ACR (Terraform)
+## Step 1: Configure Terraform Backend
 
-### 1.1 (Optional) Configure remote state backend
-Copy and edit:
 ```bash
 cp terraform/backend.tf.example terraform/backend.tf
 ```
-Fill storage account backend details (recommended for teams).
 
-### 1.2 Configure variables
+Edit backend configuration.
+
+---
+
+## Step 2: Configure Variables
+
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars
 ```
 
-### 1.3 Deploy
+Edit values.
+
+---
+
+## Step 3: Deploy Infrastructure
+
 ```bash
 terraform init
 terraform apply -auto-approve
 ```
 
-### 1.4 Connect to cluster
+Provisions:
+
+- Resource Group  
+- AKS cluster  
+- ACR registry  
+- Log Analytics  
+
+---
+
+## Step 4: Connect to Cluster
+
 ```bash
-az aks get-credentials -g <resource_group_name> -n <aks_cluster_name> --overwrite-existing
+az aks get-credentials \
+  --resource-group <resource_group> \
+  --name <aks_cluster_name> \
+  --overwrite-existing
+
 kubectl get nodes
 ```
 
 ---
 
-## Step 2 — Azure DevOps Setup
+# CI/CD Pipelines
 
-### 2.1 Create Service Connection
-Azure DevOps → Project Settings → Service connections → New:
-- **Azure Resource Manager**
-- Prefer **Workload Identity Federation** (best practice)
+This platform supports:
 
-You’ll reference it as:
-- `AZURE_SUBSCRIPTION` (pipeline variable)
+- Azure DevOps Pipelines
+- GitHub Actions
 
-### 2.2 Create ACR service connection (for Docker@2 task)
-Option A (recommended): create a **Docker registry service connection** pointing to ACR.
-- Name it the same as `ACR_NAME` or set `ACR_SERVICE_CONNECTION` variable.
+Pipeline tasks:
 
-### 2.3 Pipeline variables
-Set these pipeline variables (or a variable group):
-- `AZURE_SUBSCRIPTION` = Azure RM service connection name
-- `ACR_NAME` = your ACR name (no `.azurecr.io`)
-- `AKS_RG` = resource group
-- `AKS_NAME` = AKS cluster name
-- `K8S_NAMESPACE` = `demo`
-- (Optional) `ACR_SERVICE_CONNECTION` = Docker registry service connection name
+- Build container image
+- Push to ACR
+- Deploy to AKS using Helm
 
 ---
 
-## Step 3 — Run the pipeline
-- CI stage: build and push image to ACR
-- CD stage: deploy to AKS using Helm
+# Deploy Application (Helm)
 
----
-
-## Verify
 ```bash
-kubectl -n demo get deploy,svc
-kubectl -n demo port-forward svc/demo-api 8080:80
+helm upgrade --install demo-api ./helm/demo-api \
+  --namespace demo \
+  --create-namespace
+```
+
+Verify:
+
+```bash
+kubectl get pods -n demo
+kubectl get svc -n demo
+```
+
+Test:
+
+```bash
+kubectl port-forward svc/demo-api 8080:80 -n demo
 curl http://localhost:8080/health
 ```
+
 Expected:
+
 ```json
 {"status":"ok"}
 ```
 
 ---
 
----
+# HTTPS and TLS
 
-## HTTPS (Ingress + cert-manager + Key Vault)
+Supports secure HTTPS using:
 
-This repo includes a complete guide for enabling HTTPS on AKS using:
-- NGINX Ingress Controller
-- cert-manager
-- Optional Key Vault integration
+- cert-manager  
+- Azure Key Vault  
+- Kubernetes Ingress  
 
-See:
-- `docs/ingress-tls-keyvault.md`
-- `k8s/cert-manager/`
-- `k8s/keyvault/`
+Example:
 
-To enable TLS with Let's Encrypt (quick demo):
 ```bash
 kubectl apply -f k8s/cert-manager/clusterissuer-letsencrypt-staging.yaml
-
-helm upgrade --install demo-api ./helm/demo-api -n demo --create-namespace \
-  --set ingress.enabled=true \
-  --set ingress.hostname=demo.example.com \
-  --set ingress.tls.enabled=true \
-  --set ingress.tls.secretName=demo-api-tls \
-  --set ingress.tls.clusterIssuer=letsencrypt-staging
 ```
 
 ---
 
-## Monitoring & Alerts (Azure Monitor)
+# Monitoring
 
-AKS monitoring is enabled via Log Analytics Workspace in Terraform.
+Enabled via Azure Monitor and Log Analytics.
+
 See:
-- `docs/monitoring-azure-monitor.md`
+
+```
+docs/monitoring-azure-monitor.md
+```
 
 ---
 
-## Multi-environment deployments (dev / staging / prod)
+# Security
 
-The pipeline supports deploying to **dev**, **staging**, or **prod** via a parameter.
-Create Azure DevOps **Environments** named `dev`, `staging`, `prod` and configure:
-- Approvals & Checks for `staging` and `prod` (recommended)
+Security best practices implemented:
 
-Pipeline file:
-- `pipelines/azure-pipelines.yml`
+- No secrets in Git
+- Azure Key Vault integration
+- Secure Terraform backend support
+- Private container registry
+- TLS encryption support
 
+---
 
-## Cleanup
+# Multi-Environment Deployment
+
+Supports:
+
+- dev
+- staging
+- prod
+
+Configured via pipeline parameters.
+
+---
+
+# Local Development
+
+```bash
+docker build -t demo-api .
+docker run -p 8080:80 demo-api
+
+curl http://localhost:8080/health
+```
+
+---
+
+# Versioning
+
+Uses Semantic Versioning:
+
+```
+MAJOR.MINOR.PATCH
+```
+
+Example:
+
+```
+v1.1.0
+```
+
+---
+
+# Cleanup
+
 ```bash
 cd terraform
 terraform destroy -auto-approve
 ```
+
+---
+
+# Author
+
+Olusegun Mayungbe  
+DevOps Engineer | Platform Engineer  
+
+GitHub: https://github.com/Oluadepe  
+
+---
+
+# License
+
+MIT License
